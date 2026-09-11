@@ -1,0 +1,1202 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>SWISHCAM 3D — Basket Gestur Tangan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Sora:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#05060C;
+    --arena-1:#0B0F1E;
+    --arena-2:#171225;
+    --orange:#FF6B35;
+    --teal:#22E6C5;
+    --gold:#FFD65C;
+    --text:#F4F5FB;
+    --muted:#9599B8;
+    --line:rgba(255,255,255,.1);
+    --glass:rgba(14,16,32,.6);
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html,body{ height:100%; overflow:hidden; background:var(--bg); }
+  body{
+    font-family:'Sora',sans-serif; color:var(--text); -webkit-font-smoothing:antialiased;
+    position:fixed; inset:0;
+  }
+  .display{ font-family:'Space Grotesk',sans-serif; }
+  .mono{ font-family:'JetBrains Mono',monospace; }
+  #gameCanvas{ position:fixed; inset:0; display:block; touch-action:none; }
+
+  .vignette{
+    position:fixed; inset:0; pointer-events:none; z-index:5;
+    background:radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,.55) 100%);
+  }
+
+  /* ============ HUD TOP ============ */
+  .hud-top{
+    position:fixed; top:0; left:0; right:0; z-index:10;
+    display:flex; justify-content:space-between; align-items:flex-start;
+    padding:22px 26px; pointer-events:none;
+  }
+  .brand{ display:flex; align-items:center; gap:10px; pointer-events:auto; }
+  .brand-mark{
+    width:30px; height:30px; border-radius:9px;
+    background:linear-gradient(135deg,var(--orange),var(--gold));
+    box-shadow:0 6px 18px rgba(255,107,53,.4);
+    transform:perspective(200px) rotateY(18deg) rotateX(8deg);
+  }
+  .brand-name{ font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:17px; letter-spacing:.01em; }
+  .brand-sub{ font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--muted); letter-spacing:.08em; }
+
+  .score-panel{
+    pointer-events:auto;
+    background:var(--glass); border:1px solid var(--line); border-radius:18px;
+    backdrop-filter:blur(14px) saturate(140%);
+    padding:14px 22px; text-align:center; min-width:130px;
+  }
+  .score-panel .label{ font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--muted); letter-spacing:.1em; margin-bottom:2px; }
+  .score-panel .value{ font-family:'Space Grotesk',sans-serif; font-size:32px; font-weight:700; line-height:1;
+    background:linear-gradient(100deg,var(--gold),var(--orange));
+    -webkit-background-clip:text; background-clip:text; color:transparent; }
+
+  .stats-panel{
+    pointer-events:auto;
+    background:var(--glass); border:1px solid var(--line); border-radius:18px;
+    backdrop-filter:blur(14px) saturate(140%);
+    padding:12px 18px; display:flex; gap:18px;
+  }
+  .stat-mini{ text-align:center; }
+  .stat-mini .label{ font-family:'JetBrains Mono',monospace; font-size:9.5px; color:var(--muted); letter-spacing:.08em; }
+  .stat-mini .value{ font-family:'Space Grotesk',sans-serif; font-size:16px; font-weight:600; margin-top:2px; }
+
+  /* ============ COMBO POPUP ============ */
+  #comboPopup{
+    position:fixed; top:26%; left:50%; transform:translate(-50%,-50%) scale(.6); z-index:15;
+    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:42px;
+    background:linear-gradient(100deg,var(--gold),var(--orange));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    opacity:0; pointer-events:none; text-align:center;
+    text-shadow:0 0 40px rgba(255,107,53,.4);
+  }
+  #comboPopup.show{ animation:popCombo .95s cubic-bezier(.2,.9,.3,1) forwards; }
+  @keyframes popCombo{
+    0%{ opacity:0; transform:translate(-50%,-50%) scale(.5); }
+    18%{ opacity:1; transform:translate(-50%,-50%) scale(1.12); }
+    30%{ transform:translate(-50%,-50%) scale(1); }
+    78%{ opacity:1; }
+    100%{ opacity:0; transform:translate(-50%,-58%) scale(1.05); }
+  }
+
+  /* ============ GESTURE / CAMERA PANEL ============ */
+  .gesture-panel{
+    position:fixed; bottom:22px; left:22px; z-index:10;
+    display:flex; align-items:flex-start; gap:14px;
+    background:var(--glass); border:1px solid var(--line); border-radius:18px;
+    backdrop-filter:blur(14px) saturate(140%);
+    padding:12px; pointer-events:auto;
+  }
+  .cam-frame{
+    position:relative; width:210px; height:280px; border-radius:12px; overflow:hidden;
+    background:#0A0C18; border:1px solid var(--line); flex-shrink:0;
+  }
+  .cam-frame video, .cam-frame canvas{
+    position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
+  }
+  .cam-status-dot{
+    position:absolute; top:7px; right:7px; width:9px; height:9px; border-radius:50%;
+    background:#666; box-shadow:0 0 8px rgba(0,0,0,.5); transition:background .2s ease, box-shadow .2s ease; z-index:2;
+  }
+  .cam-status-dot.open{ background:var(--teal); box-shadow:0 0 10px var(--teal); }
+  .cam-status-dot.active{ animation:none; }
+  .cam-status-dot.cradle{ background:var(--gold); box-shadow:0 0 10px var(--gold); animation:cradlePulse 1s ease-in-out infinite; }
+  @keyframes cradlePulse{ 0%,100%{ transform:scale(1); } 50%{ transform:scale(1.35); } }
+  .cam-loading{
+    position:absolute; inset:0; z-index:3; display:flex; align-items:center; justify-content:center;
+    text-align:center; padding:16px; font-size:11.5px; line-height:1.5; color:var(--text);
+    background:rgba(5,6,12,.72); backdrop-filter:blur(2px);
+  }
+  .cam-loading.hidden{ display:none; }
+  .cam-loading.error{ color:#FF9B7A; }
+  .cam-loading::before{
+    content:''; position:absolute; top:14px; left:50%; transform:translateX(-50%);
+    width:8px; height:8px; border-radius:50%; background:var(--teal);
+    box-shadow:0 0 10px var(--teal); animation:cradlePulse 1s ease-in-out infinite;
+  }
+  .cam-loading.error::before{ background:#FF6B35; box-shadow:0 0 10px #FF6B35; animation:none; }
+  .gesture-text{ max-width:190px; }
+  .gesture-text .title{ font-family:'Space Grotesk',sans-serif; font-size:13.5px; font-weight:600; margin-bottom:4px; }
+  .gesture-text .desc{ font-size:12px; color:var(--muted); line-height:1.5; margin-bottom:8px; }
+
+  .power-panel{ margin-top:2px; }
+  .power-label{ display:flex; justify-content:space-between; font-family:'JetBrains Mono',monospace; font-size:9.5px; color:var(--muted); letter-spacing:.06em; margin-bottom:4px; }
+  .power-label b{ color:var(--text); font-weight:600; }
+  .power-bar-track{ width:100%; height:7px; border-radius:100px; background:rgba(255,255,255,.08); overflow:hidden; }
+  .power-bar-fill{
+    height:100%; border-radius:100px; width:0%;
+    background:linear-gradient(90deg,#22E6C5,#7C5CFF);
+    transition:width .08s linear, background .2s ease;
+  }
+  .power-bar-fill.tier-medium{ background:linear-gradient(90deg,#22E6C5,#FFD65C); }
+  .power-bar-fill.tier-strong{ background:linear-gradient(90deg,#FFD65C,#FF6B35); }
+  .power-bar-fill.tier-max{ background:linear-gradient(90deg,#FF6B35,#FF3B3B); box-shadow:0 0 8px rgba(255,59,59,.6); }
+
+  /* ============ MODE TOGGLE ============ */
+  .mode-toggle{
+    position:fixed; bottom:22px; right:22px; z-index:10; pointer-events:auto;
+    background:var(--glass); border:1px solid var(--line); border-radius:14px;
+    backdrop-filter:blur(14px) saturate(140%);
+    padding:8px; display:flex; gap:6px;
+  }
+  .mode-btn{
+    font-family:'JetBrains Mono',monospace; font-size:11px; padding:9px 14px; border-radius:9px;
+    border:1px solid transparent; cursor:pointer; background:transparent; color:var(--muted); font-weight:500;
+    transition:all .2s ease;
+  }
+  .mode-btn.active{ background:linear-gradient(135deg,var(--orange),#FF8B5E); color:#1a0800; border-color:transparent; }
+
+  /* ============ OVERLAYS ============ */
+  .overlay{
+    position:fixed; inset:0; z-index:30;
+    background:
+      radial-gradient(ellipse 900px 500px at 20% 0%, rgba(255,107,53,.14), transparent 60%),
+      radial-gradient(ellipse 800px 500px at 85% 100%, rgba(34,230,197,.1), transparent 55%),
+      rgba(4,5,11,.92);
+    display:flex; align-items:center; justify-content:center;
+    backdrop-filter:blur(6px);
+  }
+  .overlay-card{
+    max-width:460px; width:92%; text-align:center; padding:20px;
+  }
+  .overlay-card .tag{
+    font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--teal); letter-spacing:.1em;
+    display:inline-block; margin-bottom:16px; padding:6px 14px; border:1px solid rgba(34,230,197,.3);
+    border-radius:100px; background:rgba(34,230,197,.08);
+  }
+  .overlay-card h1{
+    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:clamp(30px,6vw,44px); line-height:1.05; margin-bottom:14px;
+  }
+  .overlay-card h1 span{
+    background:linear-gradient(100deg,var(--gold),var(--orange));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .overlay-card p.lead{ color:var(--muted); font-size:15px; line-height:1.65; margin-bottom:26px; }
+  .howto{ display:flex; gap:14px; margin-bottom:30px; text-align:left; }
+  .howto .step{
+    flex:1; background:rgba(255,255,255,.03); border:1px solid var(--line); border-radius:16px; padding:16px 14px;
+  }
+  .howto .step .num{
+    width:26px; height:26px; border-radius:8px; display:flex; align-items:center; justify-content:center;
+    font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:600; margin-bottom:10px;
+    background:linear-gradient(135deg,var(--orange),var(--gold)); color:#1a0800;
+  }
+  .howto .step p{ font-size:12.5px; color:var(--muted); line-height:1.5; }
+  .howto .step b{ color:var(--text); display:block; margin-bottom:3px; font-size:13px; }
+  .overlay-actions{ display:flex; flex-direction:column; gap:10px; }
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    padding:14px 22px; border-radius:13px; font-weight:600; font-size:14.5px;
+    cursor:pointer; border:1px solid transparent; transition:transform .18s ease, box-shadow .18s ease; font-family:'Sora',sans-serif;
+  }
+  .btn-primary{
+    background:linear-gradient(135deg,var(--orange),var(--gold));
+    color:#1a0800; box-shadow:0 10px 26px rgba(255,107,53,.35);
+  }
+  .btn-primary:hover{ transform:translateY(-2px); box-shadow:0 14px 32px rgba(255,107,53,.48); }
+  .btn-ghost{ border-color:var(--line); color:var(--text); background:rgba(255,255,255,.04); }
+  .btn-ghost:hover{ background:rgba(255,255,255,.08); }
+  .fine-print{ font-size:11.5px; color:var(--muted); margin-top:16px; line-height:1.6; }
+
+  .toast{
+    position:fixed; top:100px; left:50%; transform:translateX(-50%) translateY(-10px);
+    background:var(--glass); border:1px solid var(--line); border-radius:100px; padding:10px 20px;
+    font-size:12.5px; color:var(--muted); backdrop-filter:blur(14px); z-index:20;
+    opacity:0; transition:opacity .3s ease, transform .3s ease; pointer-events:none;
+  }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  @media (max-width:640px){
+    .stats-panel{ display:none; }
+    .gesture-panel{ left:12px; bottom:12px; padding:9px; }
+    .cam-frame{ width:140px; height:185px; }
+    .gesture-text{ max-width:130px; }
+    .gesture-text .desc{ display:none; }
+    .mode-toggle{ right:12px; bottom:12px; }
+    .howto{ flex-direction:column; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="gameCanvas"></canvas>
+<div class="vignette"></div>
+
+<!-- ============ HUD ============ -->
+<div class="hud-top">
+  <div class="brand">
+    <div class="brand-mark"></div>
+    <div>
+      <div class="brand-name">SWISHCAM</div>
+      <div class="brand-sub">BASKET 3D · GESTUR TANGAN</div>
+    </div>
+  </div>
+  <div style="display:flex; gap:12px; align-items:flex-start;">
+    <div class="stats-panel">
+      <div class="stat-mini"><div class="label">TEMBAKAN</div><div class="value" id="statShots">0</div></div>
+      <div class="stat-mini"><div class="label">AKURASI</div><div class="value" id="statAcc">0%</div></div>
+      <div class="stat-mini"><div class="label">STREAK</div><div class="value" id="statStreak">0</div></div>
+    </div>
+    <div class="score-panel">
+      <div class="label">SKOR</div>
+      <div class="value" id="scoreValue">0</div>
+    </div>
+  </div>
+</div>
+
+<div id="comboPopup">SWISH!</div>
+<div class="toast" id="toast"></div>
+
+<div class="gesture-panel">
+  <div class="cam-frame">
+    <video id="video" playsinline autoplay muted style="opacity:0;"></video>
+    <canvas id="camOverlay" width="384" height="512"></canvas>
+    <div class="cam-status-dot" id="camDot"></div>
+    <div class="cam-loading hidden" id="camLoading">Menyalakan kamera…</div>
+  </div>
+  <div class="gesture-text">
+    <div class="title" id="gestureTitle">Menunggu tangan…</div>
+    <div class="desc" id="gestureDesc">Angkat 1 tangan lalu dorong siku & pergelangan lurus ke atas, atau dekap dengan 2 tangan seperti menembak sungguhan.</div>
+    <div class="power-panel">
+      <div class="power-label"><span>KEKUATAN DORONGAN</span><b id="powerPct">0%</b></div>
+      <div class="power-bar-track"><div class="power-bar-fill" id="powerBarFill"></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="mode-toggle">
+  <button class="mode-btn active" id="btnModeHand">✋ Gestur</button>
+  <button class="mode-btn" id="btnModeMouse">🖱️ Seret</button>
+</div>
+
+<!-- ============ START OVERLAY ============ -->
+<div class="overlay" id="startOverlay">
+  <div class="overlay-card">
+    <span class="tag">● PREMIUM 3D EXPERIENCE</span>
+    <h1>Tembak bola pakai<br><span>gerakan lengan &amp; tanganmu.</span></h1>
+    <p class="lead">Arena basket 3D dengan kontrol gestur real-time lewat kamera — mendukung satu tangan atau dua tangan sekaligus seperti gaya menembak basket sungguhan.</p>
+    <div class="howto">
+      <div class="step">
+        <div class="num">1</div>
+        <p><b>Pegang</b>Angkat 1 tangan, atau dekap bola dengan 2 telapak tangan.</p>
+      </div>
+      <div class="step">
+        <div class="num">2</div>
+        <p><b>Arahkan</b>Gerakkan tangan/lengan ke posisi yang kamu inginkan.</p>
+      </div>
+      <div class="step">
+        <div class="num">3</div>
+        <p><b>Tembak</b>Luruskan lengan &amp; dorong ke atas seperti shoot asli.</p>
+      </div>
+    </div>
+    <div class="overlay-actions">
+      <button class="btn btn-primary" id="btnStartCamera">🎥 Aktifkan Kamera &amp; Mulai</button>
+      <button class="btn btn-ghost" id="btnStartMouse">Main tanpa kamera (seret mouse)</button>
+    </div>
+    <p class="fine-print">Video kamera diproses langsung di perangkatmu untuk deteksi gestur — tidak direkam atau dikirim ke mana pun.</p>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/pose.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3.1675466124/drawing_utils.js" crossorigin="anonymous"></script>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ============================================================
+     SETUP THREE.JS SCENE
+  ============================================================ */
+  const canvas = document.getElementById('gameCanvas');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:false });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x05060c);
+  scene.fog = new THREE.Fog(0x05060c, 14, 30);
+
+  const camera = new THREE.PerspectiveCamera(52, window.innerWidth/window.innerHeight, 0.1, 100);
+  const CAM_BASE = new THREE.Vector3(0, 4.3, 9.6);
+  camera.position.copy(CAM_BASE);
+  camera.lookAt(0, 2.6, -5);
+
+  function resize(){
+    camera.aspect = window.innerWidth/window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  /* ---------- Lights ---------- */
+  scene.add(new THREE.AmbientLight(0x2a2f55, 0.7));
+  const hemi = new THREE.HemisphereLight(0x8892ff, 0x1a1020, 0.5);
+  scene.add(hemi);
+
+  const spot = new THREE.SpotLight(0xfff4e0, 2.4, 40, Math.PI/6, 0.4, 1.2);
+  spot.position.set(2, 12, 2);
+  spot.target.position.set(0, 0, -5);
+  spot.castShadow = true;
+  spot.shadow.mapSize.set(1024,1024);
+  scene.add(spot, spot.target);
+
+  const rim1 = new THREE.PointLight(0x22e6c5, 1.1, 20);
+  rim1.position.set(-6, 3, -2);
+  scene.add(rim1);
+  const rim2 = new THREE.PointLight(0xff6b35, 0.9, 20);
+  rim2.position.set(6, 3, 2);
+  scene.add(rim2);
+
+  /* ---------- Spotlight cone (visual atmosphere) ---------- */
+  const coneGeo = new THREE.ConeGeometry(4.2, 13, 32, 1, true);
+  const coneMat = new THREE.MeshBasicMaterial({ color:0xfff4e0, transparent:true, opacity:0.045, side:THREE.DoubleSide, depthWrite:false });
+  const coneLight = new THREE.Mesh(coneGeo, coneMat);
+  coneLight.position.set(1, 8.4, -3);
+  coneLight.rotation.x = Math.PI;
+  scene.add(coneLight);
+
+  /* ---------- Court floor ---------- */
+  function makeFloorTexture(){
+    const c = document.createElement('canvas'); c.width = 512; c.height = 768;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#8B5A2B'; ctx.fillRect(0,0,c.width,c.height);
+    for(let i=0;i<c.width;i+=8){
+      ctx.fillStyle = (i/8)%2===0 ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.04)';
+      ctx.fillRect(i,0,8,c.height);
+    }
+    // center key lane
+    ctx.strokeStyle = 'rgba(245,240,225,0.85)'; ctx.lineWidth = 5;
+    ctx.strokeRect(c.width/2-90, c.height-260, 180, 260);
+    ctx.beginPath(); ctx.arc(c.width/2, c.height-260, 90, Math.PI, Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(c.width/2, c.height-40, 220, Math.PI*1.12, Math.PI*1.88); ctx.stroke();
+    ctx.strokeStyle = 'rgba(245,240,225,0.5)'; ctx.lineWidth = 4;
+    ctx.strokeRect(20,20,c.width-40,c.height-40);
+    const tex = new THREE.CanvasTexture(c);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    return tex;
+  }
+  const floorTex = makeFloorTexture();
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(12, 20),
+    new THREE.MeshStandardMaterial({ map:floorTex, roughness:0.55, metalness:0.15 })
+  );
+  floor.rotation.x = -Math.PI/2;
+  floor.position.set(0, 0, -2);
+  floor.receiveShadow = true;
+  scene.add(floor);
+
+  // reflective sheen plane
+  const sheen = new THREE.Mesh(
+    new THREE.PlaneGeometry(12,20),
+    new THREE.MeshBasicMaterial({ color:0xffffff, transparent:true, opacity:0.02 })
+  );
+  sheen.rotation.x = -Math.PI/2; sheen.position.set(0,0.01,-2);
+  scene.add(sheen);
+
+  /* ---------- Hoop assembly ---------- */
+  const RIM = { x:0, y:3.05, z:-6.55, r:0.5 };
+  const hoopGroup = new THREE.Group();
+
+  const pole = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.14,0.14,4.6,16),
+    new THREE.MeshStandardMaterial({ color:0x22242f, metalness:0.6, roughness:0.4 })
+  );
+  pole.position.set(0, 2.3, -7.6); pole.castShadow = true;
+  hoopGroup.add(pole);
+
+  const arm = new THREE.Mesh(
+    new THREE.BoxGeometry(0.16,0.16,1.1),
+    new THREE.MeshStandardMaterial({ color:0x22242f, metalness:0.6, roughness:0.4 })
+  );
+  arm.position.set(0, 4.1, -7.05); arm.castShadow = true;
+  hoopGroup.add(arm);
+
+  const board = new THREE.Mesh(
+    new THREE.BoxGeometry(1.8, 1.1, 0.06),
+    new THREE.MeshPhysicalMaterial({ color:0xeaf6ff, transparent:true, opacity:0.28, roughness:0.15, metalness:0, transmission:0.4, side:THREE.DoubleSide })
+  );
+  board.position.set(0, 3.7, -7.0); board.castShadow = true;
+  hoopGroup.add(board);
+  const boardFrame = new THREE.Mesh(
+    new THREE.EdgesGeometry(new THREE.BoxGeometry(1.8,1.1,0.06)),
+    new THREE.LineBasicMaterial({ color:0xff6b35 })
+  );
+  boardFrame.position.copy(board.position);
+  hoopGroup.add(boardFrame);
+  const boardSquare = new THREE.Mesh(
+    new THREE.EdgesGeometry(new THREE.BoxGeometry(0.45,0.35,0.02)),
+    new THREE.LineBasicMaterial({ color:0xff6b35 })
+  );
+  boardSquare.position.set(0, 3.35, -7.0);
+  hoopGroup.add(boardSquare);
+
+  const rimMesh = new THREE.Mesh(
+    new THREE.TorusGeometry(RIM.r, 0.035, 12, 32),
+    new THREE.MeshStandardMaterial({ color:0xff6b35, metalness:0.5, roughness:0.35, emissive:0xff6b35, emissiveIntensity:0.15 })
+  );
+  rimMesh.rotation.x = Math.PI/2;
+  rimMesh.position.set(RIM.x, RIM.y, RIM.z);
+  rimMesh.castShadow = true;
+  hoopGroup.add(rimMesh);
+
+  // net: strands from rim circle to a smaller ring below
+  const netGroup = new THREE.Group();
+  const netMat = new THREE.LineBasicMaterial({ color:0xffffff, transparent:true, opacity:0.55 });
+  const STRANDS = 14;
+  for(let i=0;i<STRANDS;i++){
+    const a = (i/STRANDS)*Math.PI*2;
+    const x1 = RIM.x + Math.cos(a)*RIM.r, z1 = RIM.z + Math.sin(a)*RIM.r;
+    const x2 = RIM.x + Math.cos(a)*RIM.r*0.45, z2 = RIM.z + Math.sin(a)*RIM.r*0.45;
+    const pts = [
+      new THREE.Vector3(x1, RIM.y-0.02, z1),
+      new THREE.Vector3((x1+x2)/2, RIM.y-0.42, (z1+z2)/2),
+      new THREE.Vector3(x2, RIM.y-0.62, z2)
+    ];
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    netGroup.add(new THREE.Line(geo, netMat));
+  }
+  hoopGroup.add(netGroup);
+  scene.add(hoopGroup);
+
+  /* ---------- Ball ---------- */
+  function makeBallTexture(){
+    const c = document.createElement('canvas'); c.width = 512; c.height = 256;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#E2681E'; ctx.fillRect(0,0,c.width,c.height);
+    ctx.strokeStyle = '#1a0d02'; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.moveTo(0,128); ctx.lineTo(512,128); ctx.stroke();
+    for(let i=0;i<4;i++){
+      const x = (i+0.5)*(512/4);
+      ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,256); ctx.stroke();
+    }
+    ctx.beginPath(); ctx.ellipse(128,128,90,128,0,0,Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(384,128,90,128,0,0,Math.PI*2); ctx.stroke();
+    return new THREE.CanvasTexture(c);
+  }
+  const BALL_R = 0.34;
+  const ballTex = makeBallTexture();
+  const ball = new THREE.Mesh(
+    new THREE.SphereGeometry(BALL_R, 28, 28),
+    new THREE.MeshStandardMaterial({ map:ballTex, roughness:0.75, metalness:0.05, transparent:true })
+  );
+  ball.castShadow = true;
+  ball.position.set(0, 1.1, 5.5);
+  scene.add(ball);
+
+  /* ---------- Power charge ring (visual kekuatan dorongan) ---------- */
+  const chargeRing = new THREE.Mesh(
+    new THREE.RingGeometry(0.44, 0.53, 40),
+    new THREE.MeshBasicMaterial({ color:0x22e6c5, transparent:true, opacity:0, side:THREE.DoubleSide, depthWrite:false })
+  );
+  chargeRing.visible = false;
+  scene.add(chargeRing);
+  const chargeRing2 = new THREE.Mesh(
+    new THREE.RingGeometry(0.58, 0.63, 40),
+    new THREE.MeshBasicMaterial({ color:0x22e6c5, transparent:true, opacity:0, side:THREE.DoubleSide, depthWrite:false })
+  );
+  chargeRing2.visible = false;
+  scene.add(chargeRing2);
+
+  function tierColorFor(p){
+    if(p>=0.88) return 0xff3b3b;
+    if(p>=0.65) return 0xff6b35;
+    if(p>=0.35) return 0xffd65c;
+    return 0x22e6c5;
+  }
+  function tierColorCSSFor(p){
+    if(p>=0.88) return '#FF3B3B';
+    if(p>=0.65) return '#FF6B35';
+    if(p>=0.35) return '#FFD65C';
+    return '#22E6C5';
+  }
+  function tierLabelFor(p){
+    if(p>=0.88) return 'MAKSIMAL 🔥';
+    if(p>=0.65) return 'KUAT 💪';
+    if(p>=0.35) return 'SEDANG';
+    return 'PELAN';
+  }
+  function tierClassFor(p){
+    if(p>=0.88) return 'tier-max';
+    if(p>=0.65) return 'tier-strong';
+    if(p>=0.35) return 'tier-medium';
+    return '';
+  }
+
+  function updateChargeRing(p){
+    const show = p>0.05 && mode==='held';
+    chargeRing.visible = show; chargeRing2.visible = show;
+    if(!show) return;
+    chargeRing.position.copy(ball.position);
+    chargeRing2.position.copy(ball.position);
+    chargeRing.quaternion.copy(camera.quaternion);
+    chargeRing2.quaternion.copy(camera.quaternion);
+    const s1 = 1 + p*0.85, s2 = 1 + p*1.5 + Math.sin(idleT*10)*0.05*p;
+    chargeRing.scale.set(s1,s1,s1);
+    chargeRing2.scale.set(s2,s2,s2);
+    const col = tierColorFor(p);
+    chargeRing.material.color.setHex(col);
+    chargeRing2.material.color.setHex(col);
+    chargeRing.material.opacity = 0.2 + p*0.6;
+    chargeRing2.material.opacity = (0.1 + p*0.35) * (0.6+0.4*Math.sin(idleT*10));
+  }
+
+  /* ---------- Particles (score burst + power trail) ---------- */
+  const particleGroup = new THREE.Group();
+  scene.add(particleGroup);
+  function burstParticles(pos, color){
+    const N = 26;
+    const geo = new THREE.BufferGeometry();
+    const positions = new Float32Array(N*3);
+    const velocities = [];
+    for(let i=0;i<N;i++){
+      positions[i*3]=pos.x; positions[i*3+1]=pos.y; positions[i*3+2]=pos.z;
+      const ang = Math.random()*Math.PI*2, spd = 1.5+Math.random()*3;
+      velocities.push(new THREE.Vector3(Math.cos(ang)*spd, 2+Math.random()*3, Math.sin(ang)*spd));
+    }
+    geo.setAttribute('position', new THREE.BufferAttribute(positions,3));
+    const mat = new THREE.PointsMaterial({ color, size:0.09, transparent:true, opacity:1 });
+    const pts = new THREE.Points(geo, mat);
+    pts.userData = { velocities, life:0, maxLife:1.0, kind:'burst' };
+    particleGroup.add(pts);
+  }
+  function spawnPowerTrail(pos, color, sizeBase){
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([pos.x,pos.y,pos.z]),3));
+    const mat = new THREE.PointsMaterial({ color, size:sizeBase||0.24, transparent:true, opacity:0.5, depthWrite:false });
+    const pt = new THREE.Points(geo, mat);
+    pt.userData = { life:0, maxLife:0.38, kind:'trail', baseSize:sizeBase||0.24 };
+    particleGroup.add(pt);
+  }
+  function updateParticles(dt){
+    particleGroup.children.slice().forEach(pts=>{
+      const d = pts.userData; d.life += dt;
+      if(d.kind==='trail'){
+        pts.material.opacity = Math.max(0, 0.5*(1-d.life/d.maxLife));
+        pts.material.size = d.baseSize + d.life*0.5;
+        if(d.life>=d.maxLife){ particleGroup.remove(pts); pts.geometry.dispose(); pts.material.dispose(); }
+        return;
+      }
+      const pos = pts.geometry.attributes.position;
+      for(let i=0;i<d.velocities.length;i++){
+        d.velocities[i].y -= 9*dt;
+        pos.array[i*3]   += d.velocities[i].x*dt;
+        pos.array[i*3+1] += d.velocities[i].y*dt;
+        pos.array[i*3+2] += d.velocities[i].z*dt;
+      }
+      pos.needsUpdate = true;
+      pts.material.opacity = Math.max(0, 1 - d.life/d.maxLife);
+      if(d.life>=d.maxLife){ particleGroup.remove(pts); pts.geometry.dispose(); pts.material.dispose(); }
+    });
+  }
+
+  /* ============================================================
+     AUDIO (synth, no external assets)
+  ============================================================ */
+  let actx = null;
+  function ensureAudio(){ if(!actx){ try{ actx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} } }
+  function tone(freq, dur, type, gainVal, delay){
+    if(!actx) return;
+    const t0 = actx.currentTime + (delay||0);
+    const osc = actx.createOscillator(); const gain = actx.createGain();
+    osc.type = type||'sine'; osc.frequency.setValueAtTime(freq, t0);
+    gain.gain.setValueAtTime(0, t0);
+    gain.gain.linearRampToValueAtTime(gainVal||0.15, t0+0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, t0+dur);
+    osc.connect(gain); gain.connect(actx.destination);
+    osc.start(t0); osc.stop(t0+dur+0.02);
+  }
+  function sfxShoot(){ tone(340,0.12,'sine',0.08); }
+  function sfxScore(){ tone(660,0.14,'triangle',0.16); tone(880,0.18,'triangle',0.14,0.09); tone(1160,0.22,'triangle',0.12,0.18); }
+  function sfxMiss(){ tone(160,0.18,'sine',0.1); }
+  function sfxBoard(){ tone(210,0.09,'square',0.09); tone(140,0.07,'sine',0.06,0.02); }
+
+  /* ============================================================
+     GAME STATE
+  ============================================================ */
+  const GRAVITY = 15.5, RESTITUTION = 0.42, FRICTION = 0.8, SCORE_RADIUS = 0.42;
+  let mode = 'held';           // held | flying | scored | cooldown
+  let vel = new THREE.Vector3();
+  let cooldownTimer = 0;
+  let scoredThisShot = false;
+  let handTargetPos = new THREE.Vector3(0, 1.1, 5.5);
+  let idleT = 0;
+  let camShake = 0;
+  let currentPower = 0;
+  let lastTrailSpawnAt = 0;
+  const powerPctEl = document.getElementById('powerPct');
+  const powerBarFillEl = document.getElementById('powerBarFill');
+
+  let score = 0, shots = 0, makes = 0, streak = 0, lastMakeTime = -99;
+  const elScore = document.getElementById('scoreValue');
+  const elShots = document.getElementById('statShots');
+  const elAcc = document.getElementById('statAcc');
+  const elStreak = document.getElementById('statStreak');
+  const comboEl = document.getElementById('comboPopup');
+
+  function updateHUD(){
+    elScore.textContent = score;
+    elShots.textContent = shots;
+    elAcc.textContent = shots ? Math.round(makes/shots*100)+'%' : '0%';
+    elStreak.textContent = streak;
+  }
+
+  function showCombo(text){
+    comboEl.textContent = text;
+    comboEl.classList.remove('show'); void comboEl.offsetWidth;
+    comboEl.classList.add('show');
+  }
+
+  let toastTimer = null;
+  function showToast(msg, ms){
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(()=>t.classList.remove('show'), ms||2200);
+  }
+
+  function onScore(){
+    makes++; shots++; 
+    const now = performance.now()/1000;
+    streak = (now - lastMakeTime < 5) ? streak+1 : 1;
+    lastMakeTime = now;
+    let pts = streak>=3 ? 3 : 2;
+    if(lastShotWasTwoHand) pts += 1; // bonus form dua-tangan
+    score += pts;
+    updateHUD();
+    burstParticles(new THREE.Vector3(RIM.x, RIM.y, RIM.z), 0xffd65c);
+    burstParticles(new THREE.Vector3(RIM.x, RIM.y, RIM.z), 0xff6b35);
+    sfxScore();
+    let label = streak>=3 ? `COMBO x${streak}!` : (streak===2 ? 'DOUBLE SWISH!' : 'SWISH!');
+    if(lastShotWasTwoHand) label = 'FORM SEMPURNA! ' + label;
+    showCombo(label);
+    mode = 'scored'; cooldownTimer = 1.15;
+  }
+  function onMiss(){
+    shots++; streak = 0;
+    updateHUD();
+    sfxMiss();
+    mode = 'cooldown'; cooldownTimer = 0.8;
+  }
+
+  /* ============================================================
+     HAND MAPPING + PUSH DETECTION (tanpa gestur kepal — murni dorongan)
+  ============================================================ */
+  const COURT_HALF_X = 2.3, HAND_Z = 5.5;
+  const HOLD_DIST_NORM = 0.30;      // jarak (ruang gambar ternormalisasi) dua telapak dianggap "mendekap" bola
+  const CRADLE_GRACE_MS = 550;      // toleransi waktu setelah dekapan lepas, tetap dianggap fase lemparan
+  let handDetected = false;
+  let handBuffer = []; // {x,y,t}
+  let twoHandActive = false;
+  let lastCradleAt = 0;
+  let lastShotWasTwoHand = false;
+
+  function mapHandToWorld(nx, ny){
+    const wx = ((1-nx) - 0.5) * (COURT_HALF_X*2);
+    const wy = (1-ny) * 3.1 + 0.6;
+    return new THREE.Vector3(wx, wy, HAND_Z);
+  }
+
+  function palmCenterNorm(lm){
+    return { x:(lm[0].x+lm[5].x+lm[9].x+lm[13].x+lm[17].x)/5, y:(lm[0].y+lm[5].y+lm[9].y+lm[13].y+lm[17].y)/5 };
+  }
+
+  function pushHandSample(pos){
+    const t = performance.now();
+    handBuffer.push({ x:pos.x, y:pos.y, t });
+    while(handBuffer.length && t - handBuffer[0].t > 260) handBuffer.shift();
+  }
+
+  // dt/dx/dy pakai buffer -> deteksi sentakan lengan (arm extension) ke atas
+  const POWER_MIN = 1.0, POWER_MAX = 9.0;
+  function tryShoot(handPos, isTwoHand){
+    if(handBuffer.length < 2) return { ok:false };
+    const first = handBuffer[0], last = handBuffer[handBuffer.length-1];
+    const dt = Math.max((last.t-first.t)/1000, 0.02);
+    const dx = last.x-first.x, dy = last.y-first.y;
+    const speed = Math.hypot(dx,dy)/dt;
+    const upSpeed = dy/dt; // world Y increases upward
+    const threshold = isTwoHand ? 1.3 : 1.35; // ambang dorongan ke atas — diturunkan agar lebih peka
+    if(upSpeed < threshold) return { ok:false };
+    const normPower = Math.max(0, Math.min(1, (upSpeed-POWER_MIN)/(POWER_MAX-POWER_MIN)));
+    const powerMul = (isTwoHand ? 1.14 : 1.0) * (0.85 + normPower*0.35); // dorongan lebih kuat = tembakan lebih bertenaga
+    const vy0 = Math.min(15, Math.max(5.5, (4.5 + upSpeed*0.55)*powerMul));
+    const vz0 = Math.max(-17, Math.min(-6.5, -(7.5 + speed*0.5)*powerMul));
+    let vx0 = (dx/dt)*0.35 + (0 - handPos.x)*0.85;
+    vx0 = Math.max(-6, Math.min(6, vx0));
+    vel.set(vx0, vy0, vz0);
+    mode = 'flying'; scoredThisShot = false; lastShotWasTwoHand = !!isTwoHand;
+    handBuffer = [];
+    sfxShoot();
+    // ledakan kecil di titik lepas + guncangan kamera ringan sesuai kekuatan
+    for(let i=0;i<6+Math.round(normPower*10);i++){
+      spawnPowerTrail(ball.position.clone(), tierColorFor(normPower), 0.16+normPower*0.1);
+    }
+    camShake = 0.06 + normPower*0.22;
+    return { ok:true, power:normPower };
+  }
+
+  /* ---------- Camera overlay drawing ---------- */
+  const video = document.getElementById('video');
+  const camCanvas = document.getElementById('camOverlay');
+  const camCtx = camCanvas.getContext('2d');
+  const camDot = document.getElementById('camDot');
+  const camLoading = document.getElementById('camLoading');
+  const gestureTitle = document.getElementById('gestureTitle');
+  const gestureDesc = document.getElementById('gestureDesc');
+  let lastHandSeenAt = 0;
+
+  // Gambar 1 garis lengan (bahu -> siku -> pergelangan) yang "menyala" sesuai kekuatan dorongan
+  function drawArmLine(ctx, shoulder, elbow, handLm, colorCss, power){
+    if(!shoulder || !elbow) return;
+    if((shoulder.visibility!==undefined && shoulder.visibility<0.4) ||
+       (elbow.visibility!==undefined && elbow.visibility<0.4)) return;
+    const sx = shoulder.x*camCanvas.width, sy = shoulder.y*camCanvas.height;
+    const ex = elbow.x*camCanvas.width, ey = elbow.y*camCanvas.height;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = colorCss;
+    ctx.shadowColor = colorCss;
+    ctx.shadowBlur = 3 + power*16;
+    ctx.lineWidth = 2.6 + power*5.5;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(ex, ey);
+    // sambungkan siku -> pergelangan (pakai landmark tangan bila terdeteksi, lebih presisi dari pose)
+    const wristLm = handLm ? handLm[0] : null;
+    if(wristLm){
+      ctx.lineTo(wristLm.x*camCanvas.width, wristLm.y*camCanvas.height);
+    }
+    ctx.stroke();
+    // titik siku
+    ctx.beginPath();
+    ctx.arc(ex, ey, 3.2 + power*3, 0, Math.PI*2);
+    ctx.fillStyle = colorCss;
+    ctx.shadowBlur = 6 + power*10;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Cari lengan pose (bahu+siku) terdekat dari sebuah landmark tangan -> untuk menyambungkan garis siku ke tangan yang tepat
+  function nearestArmFor(handLm, poseLm){
+    if(!poseLm) return null;
+    const wrist = handLm[0];
+    const lw = poseLm[15], rw = poseLm[16]; // pergelangan pose kiri/kanan
+    const dL = lw ? Math.hypot(wrist.x-lw.x, wrist.y-lw.y) : Infinity;
+    const dR = rw ? Math.hypot(wrist.x-rw.x, wrist.y-rw.y) : Infinity;
+    if(dL===Infinity && dR===Infinity) return null;
+    return dL<=dR ? { shoulder:poseLm[11], elbow:poseLm[13] } : { shoulder:poseLm[12], elbow:poseLm[14] };
+  }
+
+  function drawCamOverlay(handsList, poseLm){
+    camCtx.save();
+    camCtx.clearRect(0,0,camCanvas.width,camCanvas.height);
+    camCtx.scale(-1,1); camCtx.translate(-camCanvas.width,0);
+    if(video.readyState>=2){
+      camCtx.drawImage(video,0,0,camCanvas.width,camCanvas.height);
+    } else {
+      camCtx.fillStyle = '#0A0C18'; camCtx.fillRect(0,0,camCanvas.width,camCanvas.height);
+    }
+
+    // ---- garis siku lengan (selalu sedikit menyala, makin terang saat dorongan makin kuat) ----
+    if(poseLm && handsList && handsList.length){
+      const glowPower = Math.max(0.18, currentPower);
+      const armColor = tierColorCSSFor(glowPower);
+      handsList.forEach(lm=>{
+        const arm = nearestArmFor(lm, poseLm);
+        if(arm) drawArmLine(camCtx, arm.shoulder, arm.elbow, lm, armColor, glowPower);
+      });
+    }
+
+    if(handsList && handsList.length && window.HAND_CONNECTIONS && window.drawConnectors){
+      const lineColor = handsList.length>=2 ? '#FFD65C' : tierColorCSSFor(Math.max(0.18, currentPower));
+      handsList.forEach(lm=>{
+        drawConnectors(camCtx, lm, HAND_CONNECTIONS, { color:lineColor, lineWidth:2 });
+        drawLandmarks(camCtx, lm, { color:'#FFD65C', radius:2, lineWidth:1 });
+      });
+      // garis "rentang lengan" penghubung dua tangan -> memvisualisasikan gestur menembak dua tangan
+      if(handsList.length>=2){
+        const p1 = palmCenterNorm(handsList[0]), p2 = palmCenterNorm(handsList[1]);
+        camCtx.strokeStyle = 'rgba(255,214,92,0.8)';
+        camCtx.lineWidth = 1.5;
+        camCtx.setLineDash([4,4]);
+        camCtx.beginPath();
+        camCtx.moveTo(p1.x*camCanvas.width, p1.y*camCanvas.height);
+        camCtx.lineTo(p2.x*camCanvas.width, p2.y*camCanvas.height);
+        camCtx.stroke();
+        camCtx.setLineDash([]);
+      }
+    }
+    camCtx.restore();
+  }
+
+  /* ============================================================
+     GESTURE MODE (MediaPipe Hands + Pose — TANPA face mesh, jauh lebih ringan dari Holistic)
+  ============================================================ */
+  let handsPipeline = null, posePipeline = null, mpCamera = null, gestureModeActive = false;
+  let latestPoseLm = null; // hasil pose terbaru (di-cache, dipakai bareng hasil hands)
+
+  // Faktor pelembut (smoothing) posisi tangan -> mengurangi getaran/patah-patah, gerak jadi lebih smoot
+  const HAND_TARGET_SMOOTH = 0.42;
+
+  function onResults(results){
+    camLoading.classList.add('hidden');
+    const list = results.multiHandLandmarks || [];
+    const poseLm = latestPoseLm;
+
+    drawCamOverlay(list, poseLm);
+
+    if(list.length === 0){
+      twoHandActive = false;
+      if(performance.now() - lastHandSeenAt > 700){
+        handDetected = false;
+        camDot.className = 'cam-status-dot';
+        camDot.style.background = '';
+        camDot.style.boxShadow = '';
+        gestureTitle.textContent = 'Menunggu tangan…';
+        gestureDesc.textContent = 'Tunjukkan satu atau dua tanganmu ke kamera untuk mulai bermain.';
+        handBuffer = [];
+      }
+      return;
+    }
+
+    handDetected = true; lastHandSeenAt = performance.now();
+
+    if(list.length >= 2){
+      /* ============ MODE DUA TANGAN — gestur menembak seperti asli ============ */
+      twoHandActive = true;
+      const p1 = palmCenterNorm(list[0]), p2 = palmCenterNorm(list[1]);
+      const distNorm = Math.hypot(p1.x-p2.x, p1.y-p2.y);
+      const isCradling = distNorm < HOLD_DIST_NORM;
+      const midNorm = { x:(p1.x+p2.x)/2, y:(p1.y+p2.y)/2 };
+      const worldMid = mapHandToWorld(midNorm.x, midNorm.y);
+      const now = performance.now();
+      if(isCradling) lastCradleAt = now;
+      const inGraceWindow = (now - lastCradleAt) < CRADLE_GRACE_MS;
+
+      camDot.className = 'cam-status-dot ' + (isCradling ? 'cradle' : (inGraceWindow ? 'open' : ''));
+
+      if(mode==='held'){
+        handTargetPos.lerp(worldMid, HAND_TARGET_SMOOTH);
+        pushHandSample(worldMid);
+        if(inGraceWindow){
+          const res = tryShoot(worldMid, true);
+          if(res.ok){
+            gestureTitle.textContent='Menembak dengan dua tangan!';
+            gestureDesc.textContent=`Kekuatan: ${tierLabelFor(res.power)} — dekap lagi untuk ambil bola.`;
+          } else if(isCradling){
+            gestureTitle.textContent='Bola didekap dua tangan';
+            gestureDesc.textContent='Dorong & luruskan kedua lengan ke atas seperti menembak sungguhan.';
+          }
+        } else {
+          gestureTitle.textContent='Dua tangan terdeteksi';
+          gestureDesc.textContent='Dekatkan kedua telapak tangan untuk mendekap bola.';
+        }
+      }
+      return;
+    }
+
+    /* ============ MODE SATU TANGAN — dorong siku & pergelangan lurus ke atas untuk menembak ============ */
+    twoHandActive = false;
+    const lm = list[0];
+    const palm = palmCenterNorm(lm);
+    const worldPos = mapHandToWorld(palm.x, palm.y);
+
+    camDot.className = 'cam-status-dot active';
+    camDot.style.background = tierColorCSSFor(currentPower);
+    camDot.style.boxShadow = `0 0 10px ${tierColorCSSFor(currentPower)}`;
+
+    if(mode==='held'){
+      handTargetPos.lerp(worldPos, HAND_TARGET_SMOOTH);
+      pushHandSample(worldPos);
+      // Tembak murni dari kecepatan dorongan lurus siku & pergelangan ke atas — tanpa gestur kepal sama sekali.
+      const res = tryShoot(worldPos, false);
+      if(res.ok){
+        gestureTitle.textContent='Menembak!';
+        gestureDesc.textContent=`Kekuatan: ${tierLabelFor(res.power)} — dorong lagi untuk menembak berikutnya.`;
+      } else {
+        gestureTitle.textContent='Tangan terdeteksi';
+        gestureDesc.textContent='Luruskan & dorong siku serta pergelangan ke atas dengan cepat untuk menembak.';
+      }
+    }
+  }
+
+  async function startGestureMode(){
+    // getUserMedia butuh "secure context" (HTTPS atau localhost). Kalau file ini dibuka langsung
+    // dari disk (file://) atau lewat http biasa, browser akan menolak akses kamera diam-diam —
+    // ini penyebab paling umum "kamera tidak muncul" saat file di-test lokal sebelum di-deploy.
+    if(!window.isSecureContext || !(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)){
+      camLoading.classList.remove('hidden'); camLoading.classList.add('error');
+      camLoading.textContent = 'Kamera butuh halaman HTTPS/localhost. Deploy dulu (mis. lewat Google Apps Script Web App) lalu buka lewat link https-nya.';
+      showToast('Halaman ini dibuka bukan lewat HTTPS/localhost — browser memblokir akses kamera.', 4500);
+      enableMouseMode();
+      return;
+    }
+    camLoading.classList.remove('hidden','error');
+    camLoading.textContent = 'Menyalakan kamera…';
+    showToast('Meminta akses kamera…', 4000);
+    try{
+      handsPipeline = new Hands({ locateFile:(f)=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${f}` });
+      handsPipeline.setOptions({
+        maxNumHands:2,
+        modelComplexity:1,
+        minDetectionConfidence:0.5,
+        minTrackingConfidence:0.45
+      });
+      handsPipeline.onResults(onResults);
+
+      posePipeline = new Pose({ locateFile:(f)=>`https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${f}` });
+      posePipeline.setOptions({
+        modelComplexity:0,          // lite -> ringan, cukup untuk posisi bahu/siku (bukan wajah)
+        smoothLandmarks:true,
+        enableSegmentation:false,
+        minDetectionConfidence:0.5,
+        minTrackingConfidence:0.45
+      });
+      posePipeline.onResults((results)=>{ latestPoseLm = results.poseLandmarks || null; });
+
+      // Cegah frame menumpuk (kalau proses sebelumnya belum selesai, frame baru dilewati)
+      // -> ini penyebab utama delay makin lama: tiap frame kamera dipaksa dikirim walau model masih sibuk.
+      let processingFrame = false;
+      let pipelineErrorShown = false;
+      mpCamera = new Camera(video, {
+        onFrame: async ()=>{
+          if(processingFrame) return;
+          processingFrame = true;
+          try{
+            // Hands & Pose dijalankan paralel, dan keduanya TANPA face mesh (beban terbesar di Holistic hilang)
+            await Promise.all([
+              handsPipeline.send({ image: video }),
+              posePipeline.send({ image: video })
+            ]);
+          } catch(pipeErr){
+            // Sebelumnya error di sini hilang begitu saja (promise reject tanpa catch) -> kamera
+            // terlihat "aktif" tapi tidak pernah ada gambar/keterangan apa pun. Sekarang alasan
+            // aslinya ditampilkan langsung di panel supaya bisa langsung didiagnosis.
+            console.error('MediaPipe pipeline error:', pipeErr);
+            if(!pipelineErrorShown){
+              pipelineErrorShown = true;
+              camLoading.classList.remove('hidden'); camLoading.classList.add('error');
+              camLoading.textContent = 'Gagal memproses gambar kamera (' + (pipeErr && pipeErr.message ? pipeErr.message : String(pipeErr)) + '). Coba mode seret mouse.';
+            }
+          } finally { processingFrame = false; }
+        },
+        width: 480, height: 640
+      });
+      await mpCamera.start();
+      gestureModeActive = true;
+      setActiveModeButton('hand');
+      showToast('Kamera aktif — tunjukkan badan & tanganmu, garis siku akan menyala saat mendorong!', 3200);
+      // Watchdog: kalau setelah beberapa detik belum ada satu pun frame terproses (onResults belum
+      // pernah jalan, camLoading masih tampil), berarti stream kamera macet meski start() tidak error
+      // (mis. dipakai app lain, driver bermasalah, atau izin dicabut lewat pengaturan OS/browser).
+      setTimeout(()=>{
+        if(gestureModeActive && !camLoading.classList.contains('hidden')){
+          camLoading.classList.add('error');
+          camLoading.textContent = 'Kamera aktif tapi tidak ada gambar masuk. Cek: izin kamera browser, kamera dipakai aplikasi lain, atau coba mode seret mouse.';
+          showToast('Kamera tidak mengirim gambar — cek izin kamera / aplikasi lain yang memakainya.', 4500);
+        }
+      }, 6000);
+    }catch(err){
+      console.error(err);
+      camLoading.classList.remove('hidden'); camLoading.classList.add('error');
+      camLoading.textContent = 'Kamera tidak bisa diaktifkan (izin ditolak atau tidak tersedia). Memakai mode seret mouse.';
+      showToast('Kamera tidak tersedia — beralih ke mode seret mouse.', 3600);
+      enableMouseMode();
+    }
+  }
+
+  /* ============================================================
+     MOUSE / TOUCH FALLBACK
+  ============================================================ */
+  let mouseModeActive = false;
+  let dragStart = null, isDragging = false;
+
+  function screenToWorldXY(clientX, clientY){
+    const nx = clientX/window.innerWidth, ny = clientY/window.innerHeight;
+    return mapHandToWorld(1-nx, ny); // un-mirror since no camera mirroring involved
+  }
+
+  function enableMouseMode(){
+    mouseModeActive = true; gestureModeActive = false;
+    setActiveModeButton('mouse');
+    gestureTitle.textContent = 'Mode seret aktif';
+    gestureDesc.textContent = 'Tekan & seret ke atas lalu lepas untuk menembak.';
+    camLoading.classList.add('hidden'); camLoading.classList.remove('error');
+    if(mpCamera){ try{ mpCamera.stop(); }catch(e){} }
+  }
+
+  canvas.addEventListener('pointerdown', (e)=>{
+    if(!mouseModeActive || mode!=='held') return;
+    isDragging = true;
+    dragStart = { x:e.clientX, y:e.clientY, t:performance.now() };
+    handBuffer = [];
+  });
+  canvas.addEventListener('pointermove', (e)=>{
+    if(!mouseModeActive) return;
+    if(mode==='held'){
+      const wp = screenToWorldXY(e.clientX, e.clientY);
+      if(isDragging){ handTargetPos.copy(wp); pushHandSample(wp); }
+    }
+  });
+  window.addEventListener('pointerup', (e)=>{
+    if(!mouseModeActive || !isDragging) return;
+    isDragging = false;
+    if(mode==='held'){
+      const wp = screenToWorldXY(e.clientX, e.clientY);
+      pushHandSample(wp);
+      tryShoot(wp);
+    }
+  });
+
+  /* ============================================================
+     UI WIRING
+  ============================================================ */
+  const startOverlay = document.getElementById('startOverlay');
+  function setActiveModeButton(which){
+    document.getElementById('btnModeHand').classList.toggle('active', which==='hand');
+    document.getElementById('btnModeMouse').classList.toggle('active', which==='mouse');
+  }
+  function closeOverlay(){ startOverlay.style.display='none'; ensureAudio(); }
+
+  document.getElementById('btnStartCamera').addEventListener('click', ()=>{ closeOverlay(); startGestureMode(); });
+  document.getElementById('btnStartMouse').addEventListener('click', ()=>{ closeOverlay(); enableMouseMode(); });
+  document.getElementById('btnModeHand').addEventListener('click', ()=>{ if(!gestureModeActive) startGestureMode(); else setActiveModeButton('hand'); mouseModeActive=false; });
+  document.getElementById('btnModeMouse').addEventListener('click', enableMouseMode);
+
+  /* ============================================================
+     MAIN LOOP
+  ============================================================ */
+  let lastT = performance.now();
+  function animate(){
+    requestAnimationFrame(animate);
+    const now = performance.now();
+    let dt = (now-lastT)/1000; lastT = now;
+    dt = Math.min(dt, 0.033);
+    idleT += dt;
+
+    // subtle cinematic camera sway + guncangan saat menembak (sesuai kekuatan dorongan)
+    let shakeX = 0, shakeY = 0;
+    if(camShake > 0.001){
+      shakeX = (Math.random()-0.5)*camShake;
+      shakeY = (Math.random()-0.5)*camShake*0.6;
+      camShake *= 0.86;
+    } else { camShake = 0; }
+    camera.position.x = CAM_BASE.x + Math.sin(idleT*0.25)*0.18 + shakeX;
+    camera.position.y = CAM_BASE.y + Math.sin(idleT*0.18)*0.08 + shakeY;
+    camera.lookAt(0, 2.6, -5);
+
+    // ---- meteran kekuatan dorongan (real-time saat mode 'held') ----
+    let instPower = 0;
+    if(mode==='held' && handBuffer.length>=2){
+      const first = handBuffer[0], last = handBuffer[handBuffer.length-1];
+      const dtb = Math.max((last.t-first.t)/1000, 0.02);
+      const upSpeed = Math.max(0, (last.y-first.y)/dtb);
+      instPower = Math.max(0, Math.min(1, (upSpeed-POWER_MIN)/(POWER_MAX-POWER_MIN)));
+    }
+    const powerSmoothA = 1 - Math.exp(-dt/0.10);
+    currentPower += (instPower - currentPower) * powerSmoothA;
+    powerPctEl.textContent = Math.round(currentPower*100) + '%';
+    powerBarFillEl.style.width = (currentPower*100) + '%';
+    powerBarFillEl.className = 'power-bar-fill ' + tierClassFor(currentPower);
+    updateChargeRing(currentPower);
+    if(mode==='held' && currentPower>0.32 && now-lastTrailSpawnAt>85){
+      spawnPowerTrail(ball.position.clone(), tierColorFor(currentPower), 0.14+currentPower*0.12);
+      lastTrailSpawnAt = now;
+    }
+
+    if(mode==='held'){
+      if(!handDetected && !mouseModeActive){
+        // idle bob so scene feels alive while waiting for a hand
+        handTargetPos.set(Math.sin(idleT*0.6)*0.3, 1.15+Math.sin(idleT*1.1)*0.08, 5.5);
+      }
+      const ballSmoothA = 1 - Math.exp(-dt/0.055);
+      ball.position.lerp(handTargetPos, ballSmoothA);
+      ball.rotation.y += dt*0.6;
+    }
+    else if(mode==='flying'){
+      const prevX = ball.position.x, prevY = ball.position.y, prevZ = ball.position.z;
+      vel.y -= GRAVITY*dt;
+      ball.position.x += vel.x*dt;
+      ball.position.y += vel.y*dt;
+      ball.position.z += vel.z*dt;
+      ball.rotation.x -= vel.z*dt*1.3;
+      ball.rotation.z += vel.x*dt*1.3;
+
+      if(!scoredThisShot && vel.y<0){
+        const dxs = ball.position.x-RIM.x, dzs = ball.position.z-RIM.z;
+        const distXZ = Math.hypot(dxs,dzs);
+        if(distXZ < SCORE_RADIUS && Math.abs(ball.position.y-RIM.y) < 0.22){
+          onScore();
+        }
+      }
+      // backboard collision — deteksi bola MENEMBUS bidang depan papan antar-frame (bukan cuma cek posisi diam),
+      // supaya tembakan kencang (vz sampai -17) tidak "tembus" papan tanpa memantul (bug lama: lompatan per-frame
+      // bisa lebih lebar dari zona deteksi lama sehingga papan terasa tidak berfungsi sama sekali).
+      if(mode==='flying' && vel.z<0){
+        const BOARD_FRONT_Z = -6.97 + BALL_R; // permukaan depan papan + jari-jari bola
+        if(prevZ >= BOARD_FRONT_Z && ball.position.z < BOARD_FRONT_Z){
+          const totalStep = prevZ - ball.position.z;
+          const frac = totalStep > 0 ? (prevZ - BOARD_FRONT_Z) / totalStep : 0;
+          const hitX = prevX + (ball.position.x - prevX) * frac;
+          const hitY = prevY + (ball.position.y - prevY) * frac;
+          if(Math.abs(hitX) < 1.02 && hitY > 3.05 && hitY < 4.35){
+            ball.position.set(hitX, hitY, BOARD_FRONT_Z);
+            vel.z = Math.abs(vel.z) * 0.42;   // pantulan balik, sedikit lebih hidup dari sebelumnya
+            vel.x *= 0.6;                     // redam gerak samping seperti bola nyata kena kaca papan
+            vel.y *= 0.85;                    // sedikit redam vertikal saat membentur papan
+            camShake = Math.max(camShake, 0.05);
+            sfxBoard();
+          }
+        }
+      }
+      // floor
+      if(mode==='flying' && ball.position.y - BALL_R <= 0){
+        ball.position.y = BALL_R;
+        vel.y = Math.abs(vel.y)*RESTITUTION;
+        vel.x*=FRICTION; vel.z*=FRICTION;
+        if(Math.abs(vel.y)<0.7 && Math.hypot(vel.x,vel.z)<0.7){ onMiss(); }
+      }
+      if(mode==='flying' && (ball.position.z>9.5 || Math.abs(ball.position.x)>5.5 || ball.position.z<-11)){
+        onMiss();
+      }
+    }
+    else if(mode==='scored'){
+      ball.material.opacity = Math.max(0.15, ball.material.opacity - dt*2.2);
+      cooldownTimer -= dt;
+      if(cooldownTimer<=0){
+        ball.material.opacity = 1; mode='held'; vel.set(0,0,0);
+        ball.position.copy(handDetected||mouseModeActive ? handTargetPos : new THREE.Vector3(0,1.1,5.5));
+      }
+    }
+    else if(mode==='cooldown'){
+      cooldownTimer -= dt;
+      if(cooldownTimer<=0){
+        mode='held'; vel.set(0,0,0); ball.material.opacity=1;
+        ball.position.copy(handDetected||mouseModeActive ? handTargetPos : new THREE.Vector3(0,1.1,5.5));
+      }
+    }
+
+    updateParticles(dt);
+    renderer.render(scene, camera);
+  }
+  animate();
+})();
+</script>
+</body>
+</html>
